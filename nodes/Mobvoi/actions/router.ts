@@ -1,4 +1,4 @@
-import { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import { IBinaryKeyData, IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { apiRequest, getServiceUrl } from '../GenericFunction';
 
 export async function router(this: IExecuteFunctions): Promise<INodeExecutionData[][] | null> {
@@ -11,8 +11,7 @@ export async function router(this: IExecuteFunctions): Promise<INodeExecutionDat
 		try {
 			switch (operation) {
 				case 'get_speaker_list':
-					response = await get_speaker_list.call(this, i);
-					returnData.push(response);
+					returnData.push(...(await get_speaker_list.call(this, i, items[i])));
 					break;
 				case 'text_to_speech':
 					response = await text_to_speech.call(this, i);
@@ -27,8 +26,7 @@ export async function router(this: IExecuteFunctions): Promise<INodeExecutionDat
 					returnData.push(response);
 					break;
 				case 'query_photo_drive_avatar':
-					response = await query_photo_drive_avatar.call(this, i);
-					returnData.push(response);
+					returnData.push(...(await query_photo_drive_avatar.call(this, i, items[i])));
 					break;
 				case 'video_dubbing':
 					response = await video_dubbing.call(this, i);
@@ -53,10 +51,34 @@ export async function router(this: IExecuteFunctions): Promise<INodeExecutionDat
 	return [returnData];
 }
 
-async function get_speaker_list(this: IExecuteFunctions, i: number): Promise<INodeExecutionData> {
+async function get_speaker_list(
+	this: IExecuteFunctions,
+	i: number,
+	item: INodeExecutionData,
+): Promise<INodeExecutionData[]> {
 	const url = await getServiceUrl.call(this, 'tts.get_speaker_list');
-	const response: INodeExecutionData = await await apiRequest.call(this, url, 'POST');
-	return response;
+	const response = await apiRequest.call(this, url, 'POST', {});
+
+	const voice_type = this.getNodeParameter('voice_type', i) as string;
+
+	let responseData: IDataObject[];
+	switch (voice_type) {
+		case 'system':
+			responseData = response['data']['systemVoice'];
+			break;
+		case 'voice_cloning':
+			responseData = response['data']['voiceCloning'];
+			break;
+		default:
+			responseData = response['data'];
+	}
+
+	const executionData = this.helpers.constructExecutionMetaData(
+		this.helpers.returnJsonArray(responseData),
+		{ itemData: { item: i } },
+	);
+
+	return executionData;
 }
 //
 async function text_to_speech(this: IExecuteFunctions, i: number): Promise<INodeExecutionData> {
@@ -89,10 +111,18 @@ async function voice_clone(this: IExecuteFunctions, i: number): Promise<INodeExe
 	const url = await getServiceUrl.call(this, 'tts.voice_clone');
 
 	// params
+	const is_url = this.getNodeParameter('is_url', i) as boolean;
 	const audio_file = this.getNodeParameter('audio_file', i) as string;
 
-	const response: INodeExecutionData = await apiRequest.call(this, url, 'POST', {
-		audio_file,
+	const body: { wavUri?: string; file?: string } = {};
+	if (is_url) {
+		body.wavUri = audio_file;
+	} else {
+		body.file = audio_file;
+	}
+
+	const response: INodeExecutionData = await apiRequest.call(this, url, 'POST', body, {
+		'content-type': 'multipart/form-data',
 	});
 
 	return response;
@@ -148,23 +178,55 @@ async function photo_drive_avatar(this: IExecuteFunctions, i: number): Promise<I
 async function query_photo_drive_avatar(
 	this: IExecuteFunctions,
 	i: number,
-): Promise<INodeExecutionData> {
+	item: INodeExecutionData,
+): Promise<INodeExecutionData[]> {
 	const url = await getServiceUrl.call(this, 'avatar.query_photo_drive_avatar');
 	// params
 	const task_id = this.getNodeParameter('task_id', i) as string;
-	// const output_dir = this.getNodeParameter('output_dir', i) as string;
-	const response = await apiRequest.call(this, `${url}/${task_id}`, 'GET', {});
+	const downloadOptions = this.getNodeParameter('options', i);
 
-	if (response.json) {
-		// const data = Buffer.from(responseData.body as string);
-		// items[i].binary![dataPropertyNameDownload] = await this.helpers.prepareBinaryData(
-		// 	data as unknown as Buffer,
-		// 	fileName as string,
-		// 	mimeType,
-		// );
+	const response = await apiRequest.call(
+		this,
+		`${url}/${task_id}`,
+		'GET',
+		{},
+		{},
+		{
+			useStream: true,
+			returnFullResponse: true,
+			encoding: 'arraybuffer',
+			json: false,
+		},
+	);
+
+	const mimeType = (response.headers as IDataObject)?.['content-type'] ?? undefined;
+	const fileName = downloadOptions.fileName ?? undefined;
+
+	const newItem: INodeExecutionData = {
+		json: item.json,
+		binary: {},
+	};
+
+	if (item.binary !== undefined) {
+		// Create a shallow copy of the binary data so that the old
+		// data references which do not get changed still stay behind
+		// but the incoming data does not get changed.
+		Object.assign(newItem.binary as IBinaryKeyData, item.binary);
 	}
 
-	return response;
+	item = newItem;
+
+	const dataPropertyNameDownload = (downloadOptions.binaryPropertyName as string) || 'data';
+
+	item.binary![dataPropertyNameDownload] = await this.helpers.prepareBinaryData(
+		response.body as Buffer,
+		fileName as string,
+		mimeType as string,
+	);
+
+	const executionData = this.helpers.constructExecutionMetaData([item], { itemData: { item: i } });
+
+	return executionData;
 }
 
 async function video_dubbing(this: IExecuteFunctions, i: number): Promise<INodeExecutionData> {

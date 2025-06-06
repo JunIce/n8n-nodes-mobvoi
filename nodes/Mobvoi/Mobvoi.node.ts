@@ -74,7 +74,37 @@ export class Mobvoi implements INodeType {
 					],
 					default: 'get_speaker_list',
 				},
-
+				// get_speaker_list
+				{
+					displayName: 'Speaker Type',
+					name: 'voice_type',
+					default: 'all',
+					required: true,
+					displayOptions: {
+						show: {
+							operation: ['get_speaker_list'],
+						},
+					},
+					type: 'options',
+					placeholder: 'Select Speaker Type',
+					options: [
+						{
+							name: 'All',
+							value: 'all',
+							description: 'All Speakers',
+						},
+						{
+							name: 'System',
+							value: 'system',
+							description: 'System Speakers',
+						},
+						{
+							name: 'Voice Cloning',
+							value: 'voice_cloning',
+							description: 'Voice Cloning Speakers',
+						},
+					],
+				},
 				// text_to_speech
 				{
 					displayName: 'Text',

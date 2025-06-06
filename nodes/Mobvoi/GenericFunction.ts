@@ -22,11 +22,15 @@ function generateSignature(appKey: string, appSecret: string) {
 	};
 }
 
+function isObject(obj: any) {
+	return Object.prototype.toString.call(obj) === '[object Object]';
+}
+
 export async function apiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
 	uri: string,
 	method: IHttpRequestMethods,
-	body: any = {},
+	body: FormData | object,
 	qs: any = {},
 	option: IDataObject = {},
 ): Promise<any> {
@@ -34,14 +38,23 @@ export async function apiRequest(
 	// get and generate signature
 	const app_key = mobvoiCridentials.app_key as string;
 	const app_secrect = mobvoiCridentials.app_secrect as string;
-	const signature = generateSignature(app_key, app_secrect);
+	const signature: Record<string, string> = generateSignature(app_key, app_secrect);
+
+	if (body instanceof FormData) {
+		Object.keys(signature).forEach((key) => {
+			(body as FormData).append(key, signature[key]);
+		});
+	} else if (isObject(body)) {
+		body = Object.assign({}, body, signature);
+	}
+
 	// options
 	let options: IHttpRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
 		method,
-		body: Object.assign({}, body, signature),
+		body,
 		qs,
 		url: uri,
 		json: true,
@@ -53,28 +66,6 @@ export async function apiRequest(
 	} catch (error) {
 		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
-}
-
-export async function apiRequestAllItems(
-	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
-	propertyName: string,
-	method: IHttpRequestMethods,
-	body: any = {},
-	url: string,
-	query: IDataObject = {},
-): Promise<any> {
-	const returnData: IDataObject[] = [];
-
-	let responseData;
-	query.limit = 100;
-	query.offset = 0;
-	do {
-		responseData = await apiRequest.call(this, url, method, body, query);
-		query.offset = (responseData.offset as number) + query.limit;
-		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
-	} while (responseData[propertyName].length !== 0);
-
-	return returnData;
 }
 
 // service map
