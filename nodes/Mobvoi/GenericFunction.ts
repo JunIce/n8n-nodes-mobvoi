@@ -26,14 +26,14 @@ function isObject(obj: any) {
 	return Object.prototype.toString.call(obj) === '[object Object]';
 }
 
-export async function apiRequest(
+export async function apiRequest<T>(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
 	uri: string,
 	method: IHttpRequestMethods,
 	body: FormData | object,
 	qs: any = {},
 	option: IDataObject = {},
-): Promise<any> {
+): Promise<T> {
 	const mobvoiCridentials = await this.getCredentials('mobvoiApi');
 	// get and generate signature
 	const app_key = mobvoiCridentials.app_key as string;
