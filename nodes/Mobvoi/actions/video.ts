@@ -1,4 +1,4 @@
-import { IExecuteFunctions, INodeExecutionData, IN8nHttpFullResponse } from 'n8n-workflow';
+import { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { apiRequest, getServiceUrl } from '../GenericFunction';
 
 export async function video_dubbing(
